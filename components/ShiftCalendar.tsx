@@ -1,5 +1,6 @@
 "use client";
 
+import ExportButton from "@/components/ExportButton";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,8 +13,8 @@ import { Label } from "@/components/ui/label";
 import { useShifts } from "@/hooks/useShifts";
 import { useStaff } from "@/hooks/useStaff";
 import { Shift } from "@/models/shift";
-import { addDays, format, startOfWeek } from "date-fns";
-import { useState } from "react";
+import { addDays, addWeeks, format, startOfWeek, subWeeks } from "date-fns";
+import { useEffect, useState } from "react";
 import { v4 as uuid } from "uuid";
 
 export default function ShiftCalendar() {
@@ -30,6 +31,30 @@ export default function ShiftCalendar() {
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
 
+  const [currentWeekStart, setCurrentWeekStart] = useState<Date>(
+    startOfWeek(new Date(), { weekStartsOn: 1 })
+  );
+
+  // ✅ Restore week from localStorage on client only
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("shift-week");
+      if (stored) {
+        setCurrentWeekStart(new Date(stored));
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("shift-week", currentWeekStart.toISOString());
+    }
+  }, [currentWeekStart]);
+
+  const weekDays = Array.from({ length: 7 }, (_, i) =>
+    addDays(currentWeekStart, i)
+  );
+
   const handleSave = () => {
     if (!staffId) return;
 
@@ -43,7 +68,9 @@ export default function ShiftCalendar() {
 
     if (editingShift) {
       const filtered = shifts.filter((s) => s.id !== editingShift.id);
-      localStorage.setItem("shifts", JSON.stringify([...filtered, newShift]));
+      if (typeof window !== "undefined") {
+        localStorage.setItem("shifts", JSON.stringify([...filtered, newShift]));
+      }
     } else {
       addShift(newShift);
     }
@@ -54,7 +81,9 @@ export default function ShiftCalendar() {
   const handleDelete = () => {
     if (!editingShift) return;
     const updated = shifts.filter((s) => s.id !== editingShift.id);
-    localStorage.setItem("shifts", JSON.stringify(updated));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("shifts", JSON.stringify(updated));
+    }
     closeModal();
   };
 
@@ -84,62 +113,100 @@ export default function ShiftCalendar() {
     setEndTime("17:00");
   };
 
-  const weekDays = Array.from({ length: 7 }, (_, i) =>
-    addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), i)
-  );
-
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
-      {weekDays.map((day) => {
-        const dateStr = day.toISOString().split("T")[0];
-        const dayShifts = shifts.filter((s) => s.date === dateStr);
-
-        return (
-          <div
-            key={dateStr}
-            className="border rounded-md min-h-[200px] p-2 flex flex-col justify-between"
-            onClick={() => handleOpenAdd(dateStr)}
+    <div className="space-y-6">
+      {/* Week Navigation */}
+      <div className="flex flex-wrap justify-between items-center gap-2">
+        <div className="text-xl font-semibold">
+          Week of {format(currentWeekStart, "dd MMM yyyy")}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Input
+            type="date"
+            value={format(currentWeekStart, "yyyy-MM-dd")}
+            onChange={(e) => {
+              const selected = new Date(e.target.value);
+              const start = startOfWeek(selected, { weekStartsOn: 1 });
+              setCurrentWeekStart(start);
+            }}
+          />
+          <Button
+            variant="outline"
+            onClick={() => setCurrentWeekStart((prev) => subWeeks(prev, 1))}
           >
-            <div className="text-sm font-semibold text-muted-foreground text-center mb-2">
-              {format(day, "EEE dd/MM")}
-            </div>
-            <div className="flex flex-col gap-2 grow">
-              {dayShifts.map((shift) => {
-                const staff = staffList.find((s) => s.id === shift.staffId);
-                return (
-                  <div
-                    key={shift.id}
-                    className="rounded bg-muted p-2 text-xs hover:bg-primary/10 cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation(); // avoid triggering add
-                      handleOpenEdit(shift);
-                    }}
-                  >
-                    <div className="font-medium truncate">
-                      {staff?.name || "Unknown"}
-                    </div>
-                    <div className="text-muted-foreground">
-                      {shift.startTime} - {shift.endTime}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <Button
-              variant="ghost"
-              className="text-xs mt-2"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleOpenAdd(dateStr);
-              }}
-            >
-              + Add Shift
-            </Button>
-          </div>
-        );
-      })}
+            ← Prev Week
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() =>
+              setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
+            }
+          >
+            Today
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setCurrentWeekStart((prev) => addWeeks(prev, 1))}
+          >
+            Next Week →
+          </Button>
+          <ExportButton weekStart={currentWeekStart} />
+        </div>
+      </div>
 
-      {/* Modal for Add/Edit */}
+      {/* Weekly Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
+        {weekDays.map((day) => {
+          const dateStr = day.toISOString().split("T")[0];
+          const dayShifts = shifts.filter((s) => s.date === dateStr);
+
+          return (
+            <div
+              key={dateStr}
+              className="border rounded-md min-h-[200px] p-2 flex flex-col justify-between"
+              onClick={() => handleOpenAdd(dateStr)}
+            >
+              <div className="text-sm font-semibold text-muted-foreground text-center mb-2">
+                {format(day, "EEE dd/MM")}
+              </div>
+              <div className="flex flex-col gap-2 grow">
+                {dayShifts.map((shift) => {
+                  const staff = staffList.find((s) => s.id === shift.staffId);
+                  return (
+                    <div
+                      key={shift.id}
+                      className="rounded bg-muted p-2 text-xs hover:bg-primary/10 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenEdit(shift);
+                      }}
+                    >
+                      <div className="font-medium truncate">
+                        {staff?.name || "Unknown"}
+                      </div>
+                      <div className="text-muted-foreground">
+                        {shift.startTime} - {shift.endTime}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <Button
+                variant="ghost"
+                className="text-xs mt-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenAdd(dateStr);
+                }}
+              >
+                + Add Shift
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogTrigger asChild />
         <DialogContent>
@@ -188,14 +255,14 @@ export default function ShiftCalendar() {
                 />
               </div>
             </div>
-            <div className="gap-2 mt-4">
+            <div className="flex gap-2 mt-4">
               <Button onClick={handleSave} className="w-full">
                 {editingShift ? "Update Shift" : "Save Shift"}
               </Button>
               {editingShift && (
                 <Button
                   variant="destructive"
-                  className="w-full mt-2"
+                  className="w-full"
                   onClick={handleDelete}
                 >
                   Delete
