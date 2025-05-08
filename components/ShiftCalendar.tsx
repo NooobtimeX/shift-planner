@@ -41,7 +41,6 @@ export default function ShiftCalendar() {
       endTime,
     };
 
-    // Replace if editing
     if (editingShift) {
       const filtered = shifts.filter((s) => s.id !== editingShift.id);
       localStorage.setItem("shifts", JSON.stringify([...filtered, newShift]));
@@ -49,20 +48,22 @@ export default function ShiftCalendar() {
       addShift(newShift);
     }
 
-    // Reset state
-    setModalOpen(false);
+    closeModal();
+  };
+
+  const handleDelete = () => {
+    if (!editingShift) return;
+    const updated = shifts.filter((s) => s.id !== editingShift.id);
+    localStorage.setItem("shifts", JSON.stringify(updated));
+    closeModal();
+  };
+
+  const handleOpenAdd = (date: string) => {
+    setSelectedDate(date);
     setEditingShift(null);
     setStaffId("");
     setStartTime("09:00");
     setEndTime("17:00");
-  };
-
-  const handleOpenAdd = (date: string, time: string) => {
-    setSelectedDate(date);
-    setStartTime(time);
-    setEndTime(time);
-    setEditingShift(null);
-    setStaffId("");
     setModalOpen(true);
   };
 
@@ -75,85 +76,68 @@ export default function ShiftCalendar() {
     setModalOpen(true);
   };
 
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingShift(null);
+    setStaffId("");
+    setStartTime("09:00");
+    setEndTime("17:00");
+  };
+
   const weekDays = Array.from({ length: 7 }, (_, i) =>
     addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), i)
   );
 
-  const timeSlots = Array.from({ length: 11 }, (_, i) => {
-    const hour = 8 + i;
-    return `${String(hour).padStart(2, "0")}:00`; // 08:00 to 18:00
-  });
-
-  const getShiftsAtTime = (date: string, time: string): Shift[] => {
-    return shifts.filter((s) => {
-      if (s.date !== date) return false;
-      if (s.startTime === s.endTime) return s.startTime === time;
-      return time >= s.startTime && time < s.endTime;
-    });
-  };
-
   return (
-    <div className="overflow-x-auto">
-      <div className="grid grid-cols-[100px_repeat(7,minmax(120px,1fr))] border">
-        {/* Header */}
-        <div className="bg-muted p-2 text-sm font-semibold">Time</div>
-        {weekDays.map((day) => (
+    <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
+      {weekDays.map((day) => {
+        const dateStr = day.toISOString().split("T")[0];
+        const dayShifts = shifts.filter((s) => s.date === dateStr);
+
+        return (
           <div
-            key={day.toISOString()}
-            className="bg-muted p-2 text-sm font-semibold text-center"
+            key={dateStr}
+            className="border rounded-md min-h-[200px] p-2 flex flex-col justify-between"
+            onClick={() => handleOpenAdd(dateStr)}
           >
-            {format(day, "EEE dd/MM")}
-          </div>
-        ))}
-
-        {/* Time Rows */}
-        {timeSlots.map((time) => (
-          <div className="contents" key={time}>
-            <div className="border p-2 text-sm text-muted-foreground">
-              {time}
+            <div className="text-sm font-semibold text-muted-foreground text-center mb-2">
+              {format(day, "EEE dd/MM")}
             </div>
-            {weekDays.map((day) => {
-              const dateStr = day.toISOString().split("T")[0];
-              const timeShifts = getShiftsAtTime(dateStr, time);
-
-              return (
-                <div
-                  key={dateStr + time}
-                  className="border p-2 text-xs text-center hover:bg-accent transition-colors cursor-pointer"
-                  onClick={() => handleOpenAdd(dateStr, time)}
-                >
-                  {timeShifts.length > 0 ? (
-                    timeShifts.map((shift) => {
-                      const staff = staffList.find(
-                        (s) => s.id === shift.staffId
-                      );
-                      return (
-                        <div
-                          key={shift.id}
-                          className="rounded bg-muted p-1 mb-1 hover:bg-primary/10"
-                          onClick={(e) => {
-                            e.stopPropagation(); // prevent outer onClick
-                            handleOpenEdit(shift);
-                          }}
-                        >
-                          <div className="font-medium truncate">
-                            {staff?.name || "Unknown"}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground">
-                            {shift.startTime} - {shift.endTime}
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <span className="text-muted-foreground">+</span>
-                  )}
-                </div>
-              );
-            })}
+            <div className="flex flex-col gap-2 grow">
+              {dayShifts.map((shift) => {
+                const staff = staffList.find((s) => s.id === shift.staffId);
+                return (
+                  <div
+                    key={shift.id}
+                    className="rounded bg-muted p-2 text-xs hover:bg-primary/10 cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation(); // avoid triggering add
+                      handleOpenEdit(shift);
+                    }}
+                  >
+                    <div className="font-medium truncate">
+                      {staff?.name || "Unknown"}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {shift.startTime} - {shift.endTime}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <Button
+              variant="ghost"
+              className="text-xs mt-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenAdd(dateStr);
+              }}
+            >
+              + Add Shift
+            </Button>
           </div>
-        ))}
-      </div>
+        );
+      })}
 
       {/* Modal for Add/Edit */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -204,9 +188,20 @@ export default function ShiftCalendar() {
                 />
               </div>
             </div>
-            <Button onClick={handleSave} className="w-full mt-2">
-              {editingShift ? "Update Shift" : "Save Shift"}
-            </Button>
+            <div className="gap-2 mt-4">
+              <Button onClick={handleSave} className="w-full">
+                {editingShift ? "Update Shift" : "Save Shift"}
+              </Button>
+              {editingShift && (
+                <Button
+                  variant="destructive"
+                  className="w-full mt-2"
+                  onClick={handleDelete}
+                >
+                  Delete
+                </Button>
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
