@@ -1,6 +1,5 @@
 "use client";
 
-import ExportButton from "@/components/ExportButton";
 import ShiftCalendar from "@/components/ShiftCalendar";
 import StaffCard from "@/components/StaffCard";
 import { Button } from "@/components/ui/button";
@@ -46,7 +45,6 @@ export default function HomePage() {
         <h1 className="text-xl font-bold mb-4">📅 Shift Planner</h1>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">This Week</h2>
-          <ExportButton />
         </div>
         <ShiftCalendar />
       </section>
